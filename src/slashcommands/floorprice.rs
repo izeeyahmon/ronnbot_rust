@@ -80,7 +80,7 @@ pub async fn run(options: &[CommandDataOption]) -> String {
         "Please Provide a collection name".to_string()
     }
 }
-
+//test
 pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
     command
         .name("floorprice")
