@@ -10,6 +10,7 @@ use serenity::model::prelude::interaction::application_command::{
 use std::env::{self};
 use std::error::Error;
 use std::fmt;
+
 #[derive(Debug)]
 struct Unauthorized {
     message: String,
@@ -69,13 +70,81 @@ pub async fn run(options: &[CommandDataOption]) -> String {
         .resolved
         .as_ref()
         .expect("Expected Collection Object");
+    let verbose_flag;
+    let verbose = options.get(1).is_none();
+
+    if verbose {
+        verbose_flag = false;
+    } else {
+        verbose_flag = options
+            .get(1)
+            .unwrap()
+            .value
+            .as_ref()
+            .unwrap()
+            .as_bool()
+            .unwrap();
+    }
+
+    let empty_currency = Currency {
+        contract: String::from("null"),
+        name: String::from("null"),
+        symbol: String::from("null"),
+        decimals: 0,
+    };
+    let empty_amount = Amount {
+        raw: String::from("null"),
+        decimal: 0.0,
+        usd: 0.0,
+        native: 0.0,
+    };
+    let empty_floor = FloorAskPrice {
+        currency: empty_currency,
+        amount: empty_amount,
+    };
 
     if let CommandDataOptionValue::String(collection) = option {
         let api_result = call_api(collection).await;
-        format!(
-            "{} is the collection name you are searching for",
-            collection
-        )
+        let mut aggregated_output = String::new();
+        match api_result {
+            Ok(api_output) => {
+                let result_length = *&api_output.collections.len() as u32;
+                if result_length == 0 {
+                    return format!("There is no collection found for the name {} ", collection);
+                }
+                if verbose_flag {
+                    for project in &api_output.collections {
+                        let proj_name = &project.name;
+                        let floor_price = &project
+                            .floor_ask_price
+                            .as_ref()
+                            .unwrap_or(&empty_floor)
+                            .amount
+                            .decimal;
+                        let temp_string = format!(
+                            "The floor price for [{}] is [{}] \n",
+                            proj_name, floor_price
+                        );
+                        println!("test {} is {}", proj_name, temp_string);
+                        aggregated_output.push_str(&temp_string);
+                    }
+                    aggregated_output
+                } else {
+                    let floor_price = &api_output.collections[0]
+                        .floor_ask_price
+                        .as_ref()
+                        .unwrap_or(&empty_floor)
+                        .amount
+                        .decimal;
+                    let project_name = &api_output.collections[0].name;
+                    format!(
+                        "The floor price for [{}] is [{}]",
+                        project_name, floor_price
+                    )
+                }
+            }
+            Err(_) => format!("Something went wrong contact izee"),
+        }
     } else {
         "Please Provide a collection name".to_string()
     }
@@ -87,10 +156,17 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
         .description("Get a Floor Price of a Collection")
         .create_option(|option| {
             option
-                .name("Project")
+                .name("project")
                 .description("String Name of the Collection")
                 .kind(CommandOptionType::String)
                 .required(true)
+        })
+        .create_option(|option| {
+            option
+                .name("verbose")
+                .description("If we pull display all the verbose stuff")
+                .kind(CommandOptionType::Boolean)
+                .required(false)
         })
 }
 
@@ -126,7 +202,7 @@ pub async fn call_api(nft_collection: &String) -> Result<Root, Box<dyn Error>> {
             // on success, parse our JSON to an APIResponse
             match response.json::<Root>().await {
                 Ok(parsed) => Ok(parsed),
-                Err(e) => Err(Box::new(Unauthorized {
+                Err(_e) => Err(Box::new(Unauthorized {
                     message: String::from("Failed to parse"),
                 })),
             }
