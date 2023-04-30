@@ -1,10 +1,16 @@
 mod commands;
 mod data;
 mod slashcommands;
+use crate::commands::floor::*;
+use crate::commands::meta::*;
+use crate::commands::reactionroles::*;
+use crate::commands::replycommands::*;
+use crate::data::{config::Config, messagemap::MessageMap, reactionmap::ReactionMap};
+use reqwest::Client as ReqwestClient;
 use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
-use serenity::framework::standard::macros::{group, hook};
-use serenity::framework::standard::CommandResult;
+use serenity::framework::standard::macros::{command, group, hook};
+use serenity::framework::standard::{Args, CommandResult};
 use serenity::framework::StandardFramework;
 use serenity::http::Http;
 use serenity::model::application::command::Command;
@@ -16,6 +22,8 @@ use serenity::model::{
     id::{GuildId, MessageId, RoleId},
 };
 use serenity::prelude::*;
+use serenity::utils;
+use serenity::utils::parse_emoji;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::{
@@ -24,13 +32,6 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use tracing::{error, info};
-
-use crate::commands::floor::*;
-use crate::commands::meta::*;
-use crate::commands::reactionroles::*;
-use crate::commands::replycommands::*;
-use crate::data::{config::Config, messagemap::MessageMap, reactionmap::ReactionMap};
-
 pub struct ShardManagerContainer;
 
 impl TypeMapKey for ShardManagerContainer {
@@ -43,7 +44,7 @@ struct Handler;
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
-            // println!("Received command interaction: {:#?}", command);
+            println!("Received command interaction: {:#?}", command);
 
             let content = match command.data.name.as_str() {
                 "floorprice" => slashcommands::floorprice::run(&command.data.options).await,
@@ -148,6 +149,32 @@ async fn handle_reaction(ctx: Context, reaction: Reaction, add_role: bool) {
         }
     }
 }
+
+#[command]
+async fn steal(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    if args.message().is_empty() {
+        msg.channel_id
+            .say(&ctx.http, "Please supply some Emojis")
+            .await?;
+    } else {
+        if let Some(guild_id) = msg.guild_id {
+            for emojis in args.message().split_whitespace() {
+                let emoji = parse_emoji(emojis).unwrap();
+                println!("{:?}", emojis);
+                let mut image_url = String::from("https://cdn.discordapp.com/emojis/");
+                image_url.push_str(&emoji.id.0.to_string());
+                image_url.push_str(".png");
+                let client = ReqwestClient::new();
+                let response = client.get(&image_url).send().await?;
+                let image = utils::read_image(&image_url).expect("Failed to read image");
+
+                //let response = get(&image_url).expect("Failed to download image");
+                guild_id.create_emoji(&ctx, &emoji.name, &image).await?;
+            }
+        }
+    }
+    Ok(())
+}
 #[group]
 #[commands(
     ping,
@@ -164,8 +191,11 @@ async fn handle_reaction(ctx: Context, reaction: Reaction, add_role: bool) {
     gn,
     panels,
     reactionroles,
-    floor
+    floor,
+    fraggy,
+    steal
 )]
+
 struct General;
 
 #[hook]
@@ -216,7 +246,8 @@ async fn main() {
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
-        | GatewayIntents::GUILD_MESSAGE_REACTIONS;
+        | GatewayIntents::GUILD_MESSAGE_REACTIONS
+        | GatewayIntents::GUILD_EMOJIS_AND_STICKERS;
     let mut client = Client::builder(&token, intents)
         .framework(framework)
         .event_handler(Handler)

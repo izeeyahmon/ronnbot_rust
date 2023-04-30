@@ -132,3 +132,19 @@ async fn gn(ctx: &Context, msg: &Message) -> CommandResult {
 
     Ok(())
 }
+
+#[command]
+async fn fraggy(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.channel_id
+        .send_message(&ctx.http, |m| {
+            m.embed(|e| {
+                e.title("Fraggy Rant")
+                    .timestamp(Timestamp::now())
+                    .image("attachment://fraggy.jpg")
+            })
+            .add_file("src/images/fraggy.jpg")
+        })
+        .await?;
+
+    Ok(())
+}
